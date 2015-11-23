@@ -1,9 +1,12 @@
+#! /usr/bin/python
 # taken from http://stackoverflow.com/questions/30619740/python-downsampling-wav-audio-file
 
 import wave
 import audioop
+import sys
+import os
 
-def downsampleWav(src, dst, inrate=44100, outrate=16000, inchannels=2, outchannels=1):
+def downsampleWav(src, dst, inrate=44100, outrate=16000, inchannels=1, outchannels=1):
     if not os.path.exists(src):
         print 'Source not found!'
         return False
@@ -44,3 +47,15 @@ def downsampleWav(src, dst, inrate=44100, outrate=16000, inchannels=2, outchanne
         return False
 
     return True
+
+if __name__ == "__main__":
+    path_in = "../EN_livingalone/train/wav/"
+    path_out = "data/train/wav16/"
+
+    for file in os.listdir(path_in):
+        if file.endswith(".wav"):
+            src = path_in + file 
+            dst = path_out + file.split(".")[0] + "_16.wav"
+            downsampleWav(src, dst)        
+
+    
