@@ -104,11 +104,12 @@ model_gmm = Sequential()
 model_gmm.add(LSTM(512, return_sequences=False, input_shape=(timesteps, input_dim)))
 model_gmm.add(Dropout(0.2))
 model_gmm.add(Dense((M+2)*input_dim))
-model_gmm.add(Lambda(partial(gmm_activation,M=3)))
-model_gmm.compile(loss=gmm_loss(M), optimizer='adam')
+model_gmm.add(sp.GMMActivation(M))
+model_gmm.compile(loss=sp.gmm_loss, optimizer='adam')
 
 callbacks = [early_stopping]
 hist = model.fit(X_train, y_train, batch_size=128, nb_epoch=20, validation_split=0.1, callbacks=callbacks)
+hist = model_gmm.fit(X_train, y_train, batch_size=128, nb_epoch=20, validation_split=0.1, callbacks=callbacks)
 sp.plot_lc(hist)
 plot(model, to_file="model.png")
 
@@ -149,3 +150,17 @@ plt.imshow(test_sample.T, aspect='auto', interpolation='nearest')
 plt.figure()
 plt.imshow(np.vstack((test_sample, pred)).T, aspect='auto', interpolation='nearest')
 plt.show()
+
+# debug model
+w = sp.get_layer_weights(2, model)[0]
+plt.imshow(w)
+plt.hist(w.flatten())
+plt.show()
+
+a = sp.get_layer_outputs(2, model, np.expand_dims(X_test[0,:,:], 0))
+plt.hist(a.flatten())
+plt.show()
+
+# find data/pred/wav16/ -type f -name "*.wav" > split_ids.txt
+# python fbank_features/signal2logspec.py -p
+# python fbank_features/logspec_viewer.py

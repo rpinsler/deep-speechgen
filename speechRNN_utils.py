@@ -4,6 +4,9 @@ import theano.tensor as T
 from functools import partial
 import matplotlib.pyplot as plt
 import subprocess
+import theano
+from keras.layers.core import Layer
+from keras.objectives import binary_crossentropy
 
 def load_spectrogram_data(path="../EN_livingalone/train/wav/"):
   """
@@ -238,35 +241,39 @@ def plot_lc(hist):
   plt.legend(['train loss', 'validation loss'], loc='upper right')
   plt.show()
 
-def gmm_activation(M):
+def gmm_activation(x, M):
   """
   GMM-like activation function.
-  Assumes that input has (M+2)*D dimensions, where D is the dimensionality of the target data.
-  The first M*D features are treated as means, the next M features as variances and the last M features 
-  as mixture components of the GMM. 
+  Assumes that input has (M+2)*D dimensions, where D is the dimensionality of the 
+  target data. The first M*D features are treated as means, the next M features 
+  as variances and the last M features as mixture components of the GMM. 
   """
 
-  def gmm_activation_fn(x): 
-    D = T.shape(x)[1]/(M+2)
-    return T.concatenate([x[:,:M*D-1], T.exp(x[:,M*D:2*M*D-1]), T.nnet.sigmoid(x[:,2*M*D:])], axis=1)
+  # def gmm_activation_fn(x): 
+  D = T.shape(x)[1]/(M+2)
+  return T.concatenate([x[:,:M*D], T.exp(x[:,M*D:2*M*D]), T.nnet.sigmoid(x[:,2*M*D:])], axis=1)
 
-def gmm_loss(M):
+  # return gmm_activation_fn
+
+def gmm_loss(y_true, y_pred):
   """
   GMM loss function.
-  Assumes that y_pred has (M+2)*D dimensions and y_true has D dimensions.
-  The first M*D features are treated as means, the next M features as variances and the last M features 
-  as mixture components of the GMM. 
+  Assumes that y_pred has (M+2)*D dimensions and y_true has D dimensions. The first 
+  M*D features are treated as means, the next M features as variances and the last 
+  M features as mixture components of the GMM. 
   """
-  def loss(m, M, y_true, y_pred):
-    D = T.shape(y_true)[1]
-    return (y_pred[:,(D+1)*M+m]/y_pred[:,D*M+m]) * T.exp(-T.sum(T.sqr(y_pred[:,D*m:(m+1)*D] - y_true))/(2*y_pred[:,D*M+m]**2))
+  def loss(m, M, D, y_true, y_pred):
+    mu = y_pred[:,D*m:(m+1)*D]
+    sigma = y_pred[:,D*M+m]
+    alpha = y_pred[:,(D+1)*M+m]
+    return (alpha/sigma) * T.exp(-T.sum(T.sqr(mu-y_true),-1)/(2*sigma**2))
 
-  def gmm_loss_fn(y_true, y_pred):
-    seq = T.arange(M)
-    result, _ = theano.scan(fn=loss, outputs_info=None, sequences=seq, non_sequences=[M, y_true, y_pred])
-    return result.sum()
-
-  return gmm_loss_fn
+  D = T.shape(y_true)[1]
+  M = T.shape(y_pred)[1]/D - 2
+  seq = T.arange(M)
+  result, _ = theano.scan(fn=loss, outputs_info=None, 
+    sequences=seq, non_sequences=[M, D, y_true, y_pred])
+  return -T.log(result.sum(0)) # -T.log(result.sum()) # *binary_crossentropy(y_true[:,-1], y_pred[:,-1])
 
 def evaluate(y_true, y_pred):
   vuv_true = y_true[:,-1:]
@@ -283,3 +290,28 @@ def class_error(y_true, y_pred):
 def mmcd(y_true, y_pred):
   alpha = 10*math.sqrt(2)/np.log(10)
   return alpha*np.mean(rmse(y_true,y_pred))
+
+class GMMActivation(Layer):
+    """
+    GMM-like activation function.
+    Assumes that input has (M+2)*D dimensions, where D is the dimensionality of the 
+    target data. The first M*D features are treated as means, the next M features as 
+    variances and the last M features as mixture components of the GMM. 
+    """
+    def __init__(self, M, **kwargs):
+        super(GMMActivation, self).__init__(**kwargs)
+        self.M = M
+
+    def get_output(self, train=False):
+      X = self.get_input(train)
+      D = T.shape(X)[1]/(self.M+2)
+      mu = X[:,:self.M*D]
+      sigma = T.exp(X[:,self.M*D:2*self.M*D])
+      alpha = T.nnet.sigmoid(X[:,2*self.M*D:])
+      return T.concatenate([mu, sigma, alpha], axis=1)
+
+    def get_config(self):
+        config = {"name": self.__class__.__name__,
+                  "M": self.M}
+        base_config = super(GMMActivation, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))

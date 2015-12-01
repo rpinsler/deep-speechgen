@@ -6,3 +6,5 @@ weights/
 SPTK-3.8/
 STRAIGHTV40_007d/
 HTS/
+fbank_features/
+split_ids.txt
