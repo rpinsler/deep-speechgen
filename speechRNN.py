@@ -66,7 +66,7 @@ interp_data = vuv_data = None
 data = np.dstack(data).transpose((2,0,1))
 vuv = np.dstack(vuv).transpose((2,0,1))
 data, mu, sigma = sp.normalize_data(data)
-data = np.concatenate((data, vuv),-1)
+# data = np.concatenate((data, vuv),-1)
 vuv = None
 (X_train, y_train), (X_test, y_test) = sp.train_test_split(data)
 data = None
@@ -103,7 +103,7 @@ M = 2 # no of GMM components
 model_gmm = Sequential()
 model_gmm.add(LSTM(512, return_sequences=False, input_shape=(timesteps, input_dim)))
 model_gmm.add(Dropout(0.2))
-model_gmm.add(Dense((M+2)*input_dim))
+model_gmm.add(Dense((input_dim+2)*M))
 model_gmm.add(sp.GMMActivation(M))
 model_gmm.compile(loss=sp.gmm_loss, optimizer='adam')
 
