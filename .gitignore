@@ -2,3 +2,5 @@ ahocoder_64/
 data/
 img/
 weights/
+output/
+job.sh
