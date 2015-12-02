@@ -1,6 +1,12 @@
+*.pyc
 ahocoder_64/
 data/
 img/
 weights/
 output/
 job.sh
+SPTK-3.8/
+STRAIGHTV40_007d/
+HTS/
+fbank_features/
+split_ids.txt

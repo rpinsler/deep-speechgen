@@ -49,7 +49,7 @@ def downsampleWav(src, dst, inrate=44100, outrate=16000, inchannels=1, outchanne
     return True
 
 if __name__ == "__main__":
-    path_in = "../EN_livingalone/train/wav/"
+    path_in = "../EN_livingalone/test/wav/"
     path_out = "data/train/wav16/"
 
     for file in os.listdir(path_in):
