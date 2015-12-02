@@ -46,7 +46,7 @@ def load_ahocoder_data(nsamples=0, use_delta=True, path_lf0="data/train/lf0/", p
 
   return data
 
-def save_ahocoder_pred(pred, i=1, path_lf0="data/pred/lf0/", path_mcp="data/pred/mcp/", path_mfv="data/pred/mfv/"):
+def save_ahocoder_pred(pred, file_name="", path_lf0="data/pred/lf0/", path_mcp="data/pred/mcp/", path_mfv="data/pred/mfv/"):
   """
   Saves prediction of a single test sample
   """
@@ -56,15 +56,15 @@ def save_ahocoder_pred(pred, i=1, path_lf0="data/pred/lf0/", path_mcp="data/pred
   lf0_pred[idx] = -1e10 
   mfv_pred[idx] = 0
 
-  lf0_file = open(path_lf0 + 'pred_' + str(i) + '.lf0', 'wb')
+  lf0_file = open(path_lf0 + file_name + '.lf0', 'wb')
   lf0_pred.tofile(lf0_file)
   lf0_file.close()
 
-  mcp_file = open(path_mcp + 'pred_' + str(i) + '.mcp', 'wb')
+  mcp_file = open(path_mcp + file_name + '.mcp', 'wb')
   mcp_pred.tofile(mcp_file)
   mcp_file.close()
 
-  mfv_file = open(path_mfv + 'pred_' + str(i) + '.mfv', 'wb')
+  mfv_file = open(path_mfv + file_name + '.mfv', 'wb')
   mfv_pred.tofile(mfv_file)
   mfv_file.close()
 
@@ -121,7 +121,7 @@ def replace_uv(data, vuv=None):
   idx_uv = vuv[vuv < 0.5]
   data[:,40] = np.nan 
   data[:,41] = np.nan
-  return data
+  return data, vuv
 
 def get_feature_dim():
   DIM_MCP = 40
@@ -160,13 +160,15 @@ def split_samples(samples, vuv_samples=None, timesteps=100, shift=10):
   
   return data, vuv
 
-def normalize_data(data):
+def normalize_data(data, mu=None, sigma=None):
   """
   Normalizes each feature of the data using z-normalization.
   """
 
-  mu = data.mean((0,1))
-  sigma = data.std((0,1))
+  if (mu == None) & (sigma == None):
+    mu = data.mean((0,1))
+    sigma = data.std((0,1))
+
   data -= mu
   data /= sigma
 
@@ -195,23 +197,23 @@ def train_test_split(data, test_size=0.1):
 
   return (X_train, y_train), (X_test, y_test)
 
-def mlpg(mean, variance, i, path_delta="SPTK-3.8/windows/delta", path_accel="SPTK-3.8/windows/accel"):
+def mlpg(mean, variance, approach, path_delta="SPTK-3.8/windows/delta", path_accel="SPTK-3.8/windows/accel"):
   # mkdir SPTK-3.8/windows
   # cd SPTK-3.8/windows
   # echo "-0.5 0 0.5" | x2x +af > delta
   # echo "0.25 -0.5 0.25" | x2x +af > accel
-  fname, M = save_mlpg_pred(mean, variance, i)
+  fname, M = save_mlpg_pred(mean, variance, approach)
   cmd = 'mlpg -l '+str(M)+' -d '+path_delta+' -d '+path_accel+' '+fname 
   proc = subprocess.Popen(cmd, cwd=os.getcwd(), stdout=subprocess.PIPE, shell=True)
   pred = np.fromstring(proc.stdout.read(),dtype="float32")
   pred = np.reshape(pred, (-1, 42))
   return pred
 
-def save_mlpg_pred(mean, variance, i=1, path="data/pred/mlpg/"):
+def save_mlpg_pred(mean, variance, approach, path="data/pred/mlpg/"):
   M = mean.shape[1]/3
   pred = np.vstack((mean, variance)).T.flatten() # flatten time-step major (features change fastest)
   pred = np.array(pred, 'float32')
-  fname = path + 'pred_' + str(i) + '.mlpg'
+  fname = path + 'pred_' + approach + '.mlpg'
   pred_file = open(fname, 'wb')
   pred.tofile(pred_file)
   pred_file.close()
@@ -230,7 +232,7 @@ def get_layer_weights(layer, model):
   """
   return model.layers[layer].get_weights()
 
-def plot_lc(hist):
+def plot_lc(hist, to_file=None):
   """
   Plots the learning curve of a network
   """
@@ -239,10 +241,14 @@ def plot_lc(hist):
   plt.xlabel('Iteration')
   plt.ylabel('Loss')
   plt.legend(['train loss', 'validation loss'], loc='upper right')
-  plt.show()
+  
+  if to_file == None:
+    plt.show()
+  else:
+    plt.savefig(to_file, dpi=100)
 
 def evaluate(y_true, y_pred):
-  vuv_true = y_true[:,-1:]
+  vuv_true = y_true[:,-1]
   mcp_true, lf0_true = y_true[vuv_true,0:-3], y_true[vuv_true,-3:-2], 
   mcp_pred, lf0_pred, vuv_pred = y_pred[vuv_true,0:-3], y_pred[vuv_true,-3:-2], y_pred[:,-1:]
   return mmcd(mcp_true, mcp_pred), rmse(lf0_true, lf0_pred), class_error(vuv_true, np.round(vuv_pred)) 
@@ -276,6 +282,8 @@ class GMMActivation(Layer):
       X = T.set_subtensor(X[:,D*self.M:(D+1)*self.M], T.exp(X[:,D*self.M:(D+1)*self.M]))
       # scale alphas with softmax, s.t. that all values are between [0,1] and sum up to 1
       X = T.set_subtensor(X[:,(D+1)*self.M:(D+2)*self.M], T.nnet.softmax(X[:,(D+1)*self.M:(D+2)*self.M]))
+      # apply sigmoid to vuv bit
+      # X = T.set_subtensor(X[:,-1], T.nnet.sigmoid(X[,-1]))
       return X
 
     def get_config(self):
@@ -302,4 +310,21 @@ def gmm_loss(y_true, y_pred):
   seq = T.arange(M)
   result, _ = theano.scan(fn=loss, outputs_info=None, 
     sequences=seq, non_sequences=[M, D, y_true, y_pred])
-  return -T.log(result.sum(0)) # -T.log(result.sum()) # *binary_crossentropy(y_true[:,-1], y_pred[:,-1])
+
+  return -T.log(result.sum(0)) + binary_crossentropy(y_true[:,-1], y_pred[:,-1]) # add loss for vuv bit
+
+def gmm_sample(X, M):
+  m = np.random.randint(M)
+  D = T.shape(X)[0]/M - 2
+  mu = X[D*m:(m+1)*D]
+  sigma = X[D*M+m]
+  np.rand.normal(mu, sigma)
+
+def bernoulli_sample(X):
+  return np.random.rand() < X
+
+def sample(X, M, use_vuv=True):
+  vuv = []
+  if use_vuv:
+    vuv = bernoulli_sample(X[-1])
+  return np.vstack((gmm_sample(X[:-1,M], vuv)))
