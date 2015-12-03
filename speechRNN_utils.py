@@ -121,7 +121,7 @@ def replace_uv(data, vuv=None):
   idx_uv = vuv[vuv < 0.5]
   data[:,40] = np.nan 
   data[:,41] = np.nan
-  return data, vuv
+  return data
 
 def get_feature_dim():
   DIM_MCP = 40

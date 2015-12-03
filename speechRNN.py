@@ -110,6 +110,9 @@ def predict(X_test, model, pred_len=0, M=None):
   signal = X_test[idx,:,:].reshape(1,timesteps,input_dim)
 
   for n in range(pred_len):
+    if (n%500) == 0:
+      print("Predictions completed: " + n + "/" + pred_len) 
+      
     preds = model.predict(signal, verbose=0)[0]
     if M is not None:
       preds = sp.sample(preds, M)
@@ -176,22 +179,27 @@ nb_epoch = 20
 pred_len = 2000
 cut = 0 # no of timesteps that are removed at beginning and end of each sample
 
+print("Load data")
 data = load(nb_rawsamples, cut, use_delta)
 (X_train, y_train), (X_test, y_test) = sp.train_test_split(data)
 nb_samples, timesteps, input_dim = X_train.shape
 data = None # free some space
 
+print("Preprocess data")
 # X_train, mu, sigma = preprocess(X_train)
 # y_train, X_test, y_test = preprocess(y_train, mu, sigma), preprocess(X_test, mu, sigma), preprocess(y_test, mu, sigma)
 
+print("Build model")
 early_stopping = EarlyStopping(monitor='val_loss', patience=3)
 checkpointer = ModelCheckpoint(filepath="weights/" + "weights_" + approach + ".hdf5", verbose=1, save_best_only=True)
 callbacks = [early_stopping, checkpointer]
 model = build(timesteps, input_dim)
 
 if load_weights:
+  print("Load weights")
   model.load_weights("weights/" + "weights_" + approach + ".hdf5")
 else:
+  print("Train model")
   hist = model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=nb_epoch, validation_split=0.1, callbacks=callbacks)
   sp.plot_lc(hist, to_file="img/lc_" + approach + ".png")
   plot(model, to_file="img/model_" + approach + ".png")
@@ -200,6 +208,7 @@ else:
   hist.to_file(hist_file)
   hist_file.close()
 
+print("Predict")
 pred, test_sample = predict(X_test, model, pred_len)
 fname = "pred_" + approach
 pred_file = open("data/pred/raw/" + fname + '.np', 'wb')
