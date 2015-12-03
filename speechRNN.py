@@ -84,7 +84,7 @@ def build(timesteps, input_dim):
   # linear output layer
   model = Sequential()
   model.add(LSTM(512, return_sequences=False, input_shape=(timesteps, input_dim)))
-  model.add(Dropout(0.2))
+  # model.add(Dropout(0.2))
   # model.add(LSTM(512, return_sequences=False))
   # model.add(Dropout(0.2))
   model.add(Dense(input_dim))
@@ -167,8 +167,8 @@ def debug():
   ## keep track of variance of activations
 
 approach = "baseline"
-load_weights = False
-nb_rawsamples = 10
+load_weights = True
+nb_rawsamples = 0
 timesteps = 100
 batch_size = 128
 use_delta = False
@@ -195,6 +195,10 @@ else:
   hist = model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=nb_epoch, validation_split=0.1, callbacks=callbacks)
   sp.plot_lc(hist, to_file="img/lc_" + approach + ".png")
   plot(model, to_file="img/model_" + approach + ".png")
+
+  hist_file = open("eval/hist_" + approach + ".np", "wb")
+  hist.to_file(hist_file)
+  hist_file.close()
 
 pred, test_sample = predict(X_test, model, pred_len)
 fname = "pred_" + approach

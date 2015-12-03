@@ -3,6 +3,7 @@ ahocoder_64/
 data/
 img/
 weights/
+eval/
 output/
 job.sh
 SPTK-3.8/
