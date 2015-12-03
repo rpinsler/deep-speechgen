@@ -202,10 +202,10 @@ else:
 
 pred, test_sample = predict(X_test, model, pred_len)
 fname = "pred_" + approach
-pred_file = open("data/pred/raw" + fname + '.np', 'wb')
+pred_file = open("data/pred/raw/" + fname + '.np', 'wb')
 pred.tofile(pred_file)
 pred_file.close()
 
-evaluate(pred, test_sample, y_test, save_plot="img/pred_" + approach + ".png")
+# evaluate(pred, test_sample, y_test, save_plot="img/pred_" + approach + ".png")
 pred = postprocess(pred, approach, pred_len)
 sp.save_ahocoder_pred(pred, fname)
