@@ -11,3 +11,6 @@ STRAIGHTV40_007d/
 HTS/
 fbank_features/
 split_ids.txt
+*.sublime-project
+*.sublime-workspace
+sftp-config.json
