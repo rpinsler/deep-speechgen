@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import subprocess
 import theano
 from keras.layers.core import Layer
-from keras.objectives import binary_crossentropy
+from keras.objectives import binary_crossentropy, mse
 
 
 def load_spectrogram_data(path="../EN_livingalone/train/wav/"):
@@ -329,7 +329,7 @@ class GMMActivation(Layer):
         X = T.set_subtensor(X[:, (D+1)*self.M:(D+2)*self.M],
                             T.nnet.softmax(X[:, (D+1)*self.M:(D+2)*self.M]))
         # apply sigmoid to vuv bit
-        # X = T.set_subtensor(X[:,-1], T.nnet.sigmoid(X[,-1]))
+        X = T.set_subtensor(X[:, -1], T.nnet.sigmoid(X[:, -1]))
         return X
 
     def get_config(self):
@@ -359,23 +359,30 @@ def gmm_loss(y_true, y_pred):
                             non_sequences=[M, D, y_true, y_pred])
     # add loss for vuv bit
     vuv_loss = binary_crossentropy(y_true[:, -1], y_pred[:, -1])
+    # vuv_loss = 0
     return -T.log(result.sum(0)) + vuv_loss
 
 
+def mse_crossentropy(y_true, y_pred):
+    vuv_loss = binary_crossentropy(y_true[:, -1], y_pred[:, -1])
+    return mse(y_true[:, :-1], y_pred[:, :-1]) + vuv_loss
+
+
 def gmm_sample(X, M):
-    m = np.random.randint(M)
     D = T.shape(X)[0]/M - 2
+    alphas = X[(D+1)*M:(D+2)*M]
+    m = np.argmax(np.random.multinomial(1, alphas, 1))
     mu = X[D*m:(m+1)*D]
     sigma = X[D*M+m]
-    np.rand.normal(mu, sigma)
+    return np.rand.normal(mu, sigma)
 
 
 def bernoulli_sample(X):
-    return np.random.rand() < X
+    return int(np.random.rand() < X)
 
 
 def sample(X, M, use_vuv=True):
     vuv = []
     if use_vuv:
         vuv = bernoulli_sample(X[-1])
-    return np.vstack((gmm_sample(X[:-1, M], vuv)))
+    return np.vstack((gmm_sample(X[:-1], M), vuv))
