@@ -5,6 +5,7 @@ img/
 weights/
 eval/
 output/
+models/
 job.sh
 SPTK-3.8/
 STRAIGHTV40_007d/
