@@ -1,77 +1,19 @@
-# TODO for first paper submission (25.01.2016, 23:59 GMT+1):
-# 1. run basic MDN
-# 5. try prediction and analyze error (discriminative)
-#    -> save results, maybe have to improve method
-# 6. generate spectrogram only
-#    -> try other fbank params,
-#    -> regularization
-
-# TODO for final presentations (Friday, 12.02.2016, 14h-18h):
-# 1. finalize presentation
-
-# TODO for second paper submission (Monday, 22.02.2016, 23:59 GMT+1):
-# 1. update paper according to feedback
-# 2. try more advanced stuff
-
-
-# TODO:
-# try scikit-learn for parameter optimization
-# check activations, at least of the last layer
-
-# open issues:
-# why normalize outputs to lie between [0.01, 0.99]
-# postfiltering in cepstral domain?
-
-# things to try out:
-# deeper architecture
-# regularization, e.g. Dropout, BatchNormalization, L1/L2, structured reg
-# given timesteps 1:t, predict t+1:t+n
-# given timesteps 1:t, predict 2:t+1
-# different initialization
-# EarlyStopping
-# gradient clipping
-# RNN-specific tricks
-
-# practical considerations from Goodfellow/Bengio:
-# optimizer: SGD w/ momentum w/ decaying learning rate
-# (linearly, exponentially, by a factor of 2-10)
-# regularization: early stopping, dropout, batch normalization
-# unsupervised pre-training (if it's known to be helpful)
-# hyperparams: manually vs. automatically
-# <hyperparam>: <increases capacity when>
-# no of hidden units: increased
-# learning rate: tuned optimally
-# weight decay coefficient: decreased
-# dropout rate: decreased
-# monitor histograms of activations and gradient (see details in book)
-
 from __future__ import print_function
 from __future__ import absolute_import
 
-from keras.models import Sequential, model_from_json
-from keras.layers.core import Dense, Dropout, TimeDistributedDense, Flatten
-from keras.layers.noise import GaussianNoise
-from keras.optimizers import RMSprop, Adam, SGD
-from keras.layers.normalization import BatchNormalization
+from keras.models import Sequential
+from keras.layers.core import Dense, Dropout
+from keras.optimizers import RMSprop
 from keras.layers.recurrent import LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.regularizers import l1l2, l2
 
 import pickle
 import numpy as np
 import speechRNN_utils as sp
-from pylab import rcParams
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-
-# originally 112639 frames for 7 seconds at sample rate of 16KHz
-# 3872 (16bit), 1936 (32bit),  968 (64bit) extracted vectors
-# lframe=80     Frame shift (samples) -> 80/16000 = 0.005 -> 5ms
-# window size could be 196 frames -> 196/16000 = 0.01225 -> 12.25ms
-# 7*16000/(196-80) = 968 -> suggests 64bit vector representation
-# data load suggests 32bit vector representation though
 
 
 def load(n=0, cut=0, use_delta=False, timesteps=100, shift=10):

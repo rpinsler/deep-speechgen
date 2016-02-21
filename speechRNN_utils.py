@@ -6,7 +6,6 @@ import numpy as np
 import theano.tensor as T
 import subprocess
 import theano
-from theano import function
 from keras.layers.core import Layer
 from keras.objectives import binary_crossentropy, mse
 
@@ -395,10 +394,6 @@ class LinearVUVActivation(Layer):
         config = {"name": self.__class__.__name__}
         base_config = super(LinearVUVActivation, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
-
-def test_loss(y_true, y_pred):
-    return T.sum(y_true)+T.sum(y_pred)
 
 
 def mse_crossentropy(y_true, y_pred):
