@@ -1,22 +1,34 @@
+# from __future__ import division
+
 import math
 import os
 import numpy as np
 import theano.tensor as T
-import matplotlib.pyplot as plt
 import subprocess
 import theano
+from theano import function
 from keras.layers.core import Layer
 from keras.objectives import binary_crossentropy, mse
 
+import matplotlib
+# Force matplotlib to not use any Xwindows backend.
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-def load_spectrogram_data(path="../EN_livingalone/train/wav/"):
+
+def load_spectrogram_data(nsamples=0, path="data/train/spectrogram_80_40/"):
     """
     Loads all the spectrogram training data
     """
     # python ../fbank_features/signal2logspec.py -p
     data = []
+    i = 0
     for file in os.listdir(path):
         if file.endswith(".logspec.npy"):
+            if (nsamples != 0) & (nsamples == i):
+                break
+            i += 1
+
             data.append(np.load(path + file))
     return data
 
@@ -57,7 +69,7 @@ def save_ahocoder_pred(pred, file_name="", path_lf0="data/pred/lf0/",
     pred = np.array(pred, 'float32')
     mcp_pred = pred[:, 0:-2].flatten()
     lf0_pred, mfv_pred = pred[:, -2:-1], pred[:, -1:]
-    idx = np.where(np.logical_and(np.isnan(lf0_pred), np.isnan(mcp_pred)))
+    idx = np.where(np.logical_and(np.isnan(lf0_pred), np.isnan(mfv_pred)).flatten())
     lf0_pred[idx] = -1e10
     mfv_pred[idx] = 0
 
@@ -131,8 +143,8 @@ def replace_uv(data, vuv=None):
         vuv = data[:, -1]
         data = data[:, :-1]
 
-    data[:, 40] = np.nan
-    data[:, 41] = np.nan
+    data[np.logical_not(vuv), 40] = np.nan
+    data[np.logical_not(vuv), 41] = np.nan
     return data
 
 
@@ -169,19 +181,17 @@ def split_features(data, use_delta=True, use_vuv=False):
     return (mcp, mcpd, mcpdd), (lf0, lf0d, lf0dd), (mfv, mfvd, mfvdd), vuv
 
 
-def split_samples(samples, vuv_samples=None, timesteps=100, shift=10):
+def split_samples(samples, timesteps=100, shift=10):
     """
     Splits all samples into multiple sub-samples with fixed length.
     """
     data = []
-    vuv = []
-    for sample in zip(samples, vuv_samples):
-        nsplits = (sample[0].shape[0] - timesteps) // shift
+    for sample in samples:
+        nsplits = (sample.shape[0] - timesteps) // shift
         for s in range(nsplits):
-            data.append(sample[0][s*shift:timesteps+s*shift, :])
-            vuv.append(sample[1][s*shift:timesteps+s*shift, :])
+            data.append(sample[s*shift:timesteps+s*shift, :])
 
-    return data, vuv
+    return data
 
 
 def normalize_data(data, mu=None, sigma=None):
@@ -212,16 +222,15 @@ def scale_output(training_data, output):
     return 0.01 + (output-minimum)*(0.99-0.01)/(maximum-minimum)
 
 
-def train_test_split(data, test_size=0.1):
+def train_test_split(data, pred_len=1, test_size=0.1):
     """
     Splits data into training and test sets.
     data: tensor of [nb_samples, timesteps, input_dim]
     """
     ntrn = round(data.shape[0] * (1 - test_size))
 
-    X_train, y_train = data[:ntrn, :-1, :], data[:ntrn, -1, :]
-    X_test, y_test = data[ntrn:, :-1, :], data[ntrn:, -1, :]
-
+    X_train, y_train = data[:ntrn, :-pred_len, :], data[:ntrn, -pred_len:, :]
+    X_test, y_test = data[ntrn:, :-pred_len, :], data[ntrn:, -pred_len:, :]
     return (X_train, y_train), (X_test, y_test)
 
 
@@ -268,10 +277,18 @@ def get_layer_weights(layer, model):
     return model.layers[layer].get_weights()
 
 
+def get_loss(model, X_test, y_test, idx):
+    y_true = T.matrix()
+    y_pred = T.matrix()
+    out = get_layer_outputs(-1, model, X_test[idx:idx+1, :, :])
+    return gmm_loss(y_true, y_pred).eval({y_true: y_test[idx:idx+1, :], y_pred: out})
+
+
 def plot_lc(hist, to_file=None):
     """
     Plots the learning curve of a network
     """
+    plt.figure()
     plt.plot(hist.history["loss"])
     plt.plot(hist.history["val_loss"])
     plt.xlabel('Iteration')
@@ -286,19 +303,19 @@ def plot_lc(hist, to_file=None):
 
 def evaluate(y_true, y_pred):
     vuv_true = y_true[:, -1]
-    mcp_true, lf0_true = y_true[vuv_true, 0:-3], y_true[vuv_true, -3:-2]
-    mcp_pred, lf0_pred = y_pred[vuv_true, 0:-3], y_pred[vuv_true, -3:-2]
-    vuv_pred = y_pred[:, -1:]
+    mcp_true, lf0_true = y_true[:, :-3], y_true[:, -3:-2]
+    mcp_pred, lf0_pred = y_pred[:, :-3], y_pred[:, -3:-2]
+    vuv_pred = y_pred[:, -1]
     err = class_error(vuv_true, np.round(vuv_pred))
     return mmcd(mcp_true, mcp_pred), rmse(lf0_true, lf0_pred), err
 
 
 def rmse(y_true, y_pred):
-    return np.sqrt(np.mean(np.square(y_true-y_pred), -1))
+    return np.sqrt(np.mean(np.square(y_true-y_pred)))
 
 
 def class_error(y_true, y_pred):
-    return np.sum(np.not_equal(y_true, y_pred))/len(y_true)
+    return 1 - np.sum(np.equal(y_true, y_pred))/float(len(y_true))
 
 
 def mmcd(y_true, y_pred):
@@ -352,37 +369,72 @@ def gmm_loss(y_true, y_pred):
         alpha = y_pred[:, (D+1)*M+m]
         return (alpha/sigma) * T.exp(-T.sum(T.sqr(mu-y_true), -1)/(2*sigma**2))
 
-    D = T.shape(y_true)[1]
-    M = T.shape(y_pred)[1]/(D+2)
+    D = T.shape(y_true)[1] - 1
+    M = (T.shape(y_pred)[1] - 1)/(D+2)
     seq = T.arange(M)
     result, _ = theano.scan(fn=loss, outputs_info=None, sequences=seq,
-                            non_sequences=[M, D, y_true, y_pred])
+                            non_sequences=[M, D, y_true[:, :-1],
+                                           y_pred[:, :-1]])
     # add loss for vuv bit
     vuv_loss = binary_crossentropy(y_true[:, -1], y_pred[:, -1])
     # vuv_loss = 0
-    return -T.log(result.sum(0)) + vuv_loss
+    return -T.log(result.sum(0) + 1e-7) - vuv_loss
+
+
+class LinearVUVActivation(Layer):
+    def __init__(self, **kwargs):
+        super(LinearVUVActivation, self).__init__(**kwargs)
+
+    def get_output(self, train=False):
+        X = self.get_input(train)
+        # apply sigmoid to vuv bit
+        X = T.set_subtensor(X[:, -1], T.nnet.sigmoid(X[:, -1]))
+        return X
+
+    def get_config(self):
+        config = {"name": self.__class__.__name__}
+        base_config = super(LinearVUVActivation, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+def test_loss(y_true, y_pred):
+    return T.sum(y_true)+T.sum(y_pred)
 
 
 def mse_crossentropy(y_true, y_pred):
     vuv_loss = binary_crossentropy(y_true[:, -1], y_pred[:, -1])
-    return mse(y_true[:, :-1], y_pred[:, :-1]) + vuv_loss
+    return mse(y_true[:, :-1], y_pred[:, :-1]) * vuv_loss
 
 
 def gmm_sample(X, M):
-    D = T.shape(X)[0]/M - 2
+    D = np.shape(X)[0]/M - 2
     alphas = X[(D+1)*M:(D+2)*M]
+    if sum(alphas) > 1.0:  # shouldn't happen but is possible due to numeric errors
+        alphas /= sum(alphas)
+
     m = np.argmax(np.random.multinomial(1, alphas, 1))
     mu = X[D*m:(m+1)*D]
     sigma = X[D*M+m]
-    return np.rand.normal(mu, sigma)
+    return np.random.normal(mu, sigma), sigma, alphas
 
 
 def bernoulli_sample(X):
     return int(np.random.rand() < X)
 
 
-def sample(X, M, use_vuv=True):
-    vuv = []
-    if use_vuv:
-        vuv = bernoulli_sample(X[-1])
-    return np.vstack((gmm_sample(X[:-1], M), vuv))
+def sample(X, M):
+    gmm, sigma, alphas = gmm_sample(X[:-1], M)
+    vuv = np.asarray(bernoulli_sample(X[-1]))
+    return np.hstack((gmm, vuv)), sigma, alphas
+
+
+def load_speech_results(approach, path='data/pred/wav16/'):
+    mcp = np.load(path + "pred_" + approach + ".logspec.npy")
+    vuv = np.load(path + approach + ".vuv.npy")
+
+    try:
+        alphas = np.load(path + approach + ".alpha.npy")
+    except IOError:
+        alphas = None
+
+    return mcp, vuv, alphas
